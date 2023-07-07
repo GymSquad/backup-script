@@ -1,0 +1,28 @@
+[database]
+url = "postgres://postgres:postgres@localhost:5432/postgres"
+
+[runner]
+num-threads = 4
+num-runs = 10
+
+[archive]
+output-dir = "./archive"
+accept-format = [
+    "htm",
+    "html",
+    "css",
+    "js",
+    "jpg",
+    "jpeg",
+    "png",
+    "gif",
+    "bmp",
+    "svg",
+    "webp",
+    "woff",
+    "woff2",
+    "ttf",
+    "otf",
+    "php",
+    "aspx",
+]
