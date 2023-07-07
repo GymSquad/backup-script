@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use color_eyre::Result;
+use color_eyre::{eyre::Context, Help, Result};
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -36,8 +36,12 @@ impl Config {
     where
         P: AsRef<Path>,
     {
-        let content = std::fs::read_to_string(path)?;
-        let config = toml::from_str(&content)?;
+        let content = std::fs::read_to_string(path)
+            .wrap_err("Failed to read config file")
+            .with_suggestion(|| "Check if the specified file name is correct")?;
+        let config = toml::from_str(&content)
+            .wrap_err("Failed to parse config file")
+            .with_suggestion(|| "Check if the fields or syntax is correct")?;
         Ok(config)
     }
 }

@@ -10,14 +10,7 @@ fn main() -> Result<()> {
         .nth(1)
         .unwrap_or_else(|| "archive.toml".to_string());
 
-    let config = match Config::try_read(config_file) {
-        Ok(config) => config,
-        Err(e) => {
-            eprintln!("Failed to read config file: {}", e);
-            std::process::exit(1);
-        }
-    };
-
+    let config = Config::try_read(config_file)?;
     println!("config: {config:#?}");
 
     Ok(())
