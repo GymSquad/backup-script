@@ -22,14 +22,19 @@ fn main() -> Result<()> {
 
     let runtime = builder.enable_all().build()?;
 
-    Ok(runtime.block_on(async {
+    runtime.block_on(async move {
         tokio::select! {
-            _ = archive::main() => {
-                println!("Archive completed successfully!");
+            result = archive::main(config) => {
+                match result {
+                    Ok(_) => println!("Archive completed successfully!"),
+                    Err(e) => println!("Archive failed with error: {}", e),
+                }
             }
             _ = tokio::signal::ctrl_c() => {
                 println!("Ctrl-C received, shutting down...");
             }
         }
-    }))
+    });
+
+    Ok(())
 }
