@@ -2,17 +2,24 @@ mod archive;
 mod config;
 mod db;
 
+use clap::Parser;
 use color_eyre::Result;
 use config::Config;
+
+#[derive(Debug, Parser)]
+#[command(author, version, about)]
+struct Opts {
+    /// Custom config file location
+    #[clap(default_value = "archive.toml")]
+    config: String,
+}
 
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let config_file = std::env::args()
-        .nth(1)
-        .unwrap_or_else(|| "archive.toml".to_string());
+    let Opts { config } = Opts::parse();
 
-    let config = Config::try_read(config_file)?;
+    let config = Config::try_read(config)?;
 
     let mut builder = tokio::runtime::Builder::new_multi_thread();
 
