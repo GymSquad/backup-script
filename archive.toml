@@ -7,22 +7,17 @@ num-runs = 10
 
 [archive]
 output-dir = "./archive"
-accept-format = [
-    "htm",
-    "html",
-    "css",
-    "js",
-    "jpg",
-    "jpeg",
-    "png",
-    "gif",
-    "bmp",
-    "svg",
-    "webp",
-    "woff",
-    "woff2",
-    "ttf",
-    "otf",
-    "php",
-    "aspx",
+command = [
+    "wget",
+    "--accept",
+    "htm,html,css,js,jpg,jpeg,png,gif,bmp,svg,webp,woff,woff2,ttf,otf,php,aspx",
+    "--mirror",
+    "--tries",
+    "2",
+    "--no-parent",
+    "--user-agent",
+    "Mozilla/5.0",
+    "--convert-links",
+    "--adjust-extension",
+    "{url}",
 ]

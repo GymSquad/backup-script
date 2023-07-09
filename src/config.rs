@@ -19,8 +19,7 @@ pub struct DatabaseConfig {
 pub struct ArchiveConfig {
     #[serde(alias = "output-dir")]
     pub output_dir: PathBuf,
-    #[serde(alias = "accept-format")]
-    pub accept_format: Vec<String>,
+    pub command: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
