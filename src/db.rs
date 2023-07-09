@@ -1,6 +1,7 @@
 use color_eyre::{eyre::Context, Result};
 use sqlx::{Pool, Postgres};
 
+#[derive(Debug, Clone)]
 pub struct Database {
     pool: Pool<Postgres>,
 }
@@ -32,7 +33,7 @@ impl Database {
         .wrap_err("Failed to fetch websites from database")
     }
 
-    pub async fn update_website(&self, website: &Website) -> Result<()> {
+    pub async fn update_website_status(&self, id: &str, is_valid: bool) -> Result<()> {
         sqlx::query(
             r#"
             UPDATE "Website"
@@ -40,8 +41,8 @@ impl Database {
             WHERE "id" = $2
             "#,
         )
-        .bind(website.is_valid)
-        .bind(&website.id)
+        .bind(is_valid)
+        .bind(id)
         .execute(&self.pool)
         .await
         .wrap_err("Failed to update website in database")?;
