@@ -1,5 +1,6 @@
 mod archive;
 mod config;
+mod db;
 
 use color_eyre::Result;
 use config::Config;

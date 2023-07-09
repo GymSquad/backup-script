@@ -8,5 +8,6 @@ edition = "2021"
 [dependencies]
 color-eyre = "0.6.2"
 serde = { version = "1.0.167", features = ["derive"] }
+sqlx = { version = "0.7.0", features = ["runtime-tokio-rustls", "postgres"] }
 tokio = { version = "1.29.1", features = ["rt-multi-thread", "macros", "signal", "time"] }
 toml = "0.7.6"
