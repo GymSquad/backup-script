@@ -1,15 +1,29 @@
+mod controller;
 mod website_checker;
+
+use std::sync::{Arc, OnceLock};
 
 use crate::{config::Config, db::Database};
 use color_eyre::Result;
 
+use self::controller::ArchiveController;
 use self::website_checker::WebsiteChecker;
+
+static COMMAND: OnceLock<Vec<String>> = OnceLock::new();
 
 pub async fn main(config: Config) -> Result<()> {
     let db = Database::connect(&config.database.url).await?;
+    let mut command = COMMAND
+        .get_or_init(|| config.archive.command.clone())
+        .iter()
+        .map(|s| s.as_str());
+    let program: Arc<str> = command.next().unwrap_or("wget").into();
+    let command_args = command.collect::<Arc<_>>();
 
     let websites = db.get_websites().await?;
     let checker = WebsiteChecker::new();
+
+    let mut controller = ArchiveController::new(db, checker, program, command_args);
 
     let num_urls = config
         .runner
@@ -18,31 +32,10 @@ pub async fn main(config: Config) -> Result<()> {
         .unwrap_or(websites.len());
 
     for website in websites.into_iter().take(num_urls) {
-        let checker = checker.clone();
-        let db = db.clone();
-        tokio::spawn(async move {
-            use website_checker::WebsiteStatus::*;
-
-            let (_url, is_valid) = match checker.request_check(website.url.clone()).await {
-                Ok(Valid) => (website.url, true),
-                Ok(Redirected(url)) => (url, true),
-                Ok(Dead) => (website.url, false),
-                Err(_) => return,
-            };
-
-            if website.is_valid != is_valid {
-                db.update_website_status(&website.id, is_valid)
-                    .await
-                    .unwrap();
-            }
-
-            if !is_valid {
-                return;
-            }
-
-            todo!("archive website");
-        });
+        controller.add_website(website);
     }
+
+    controller.wait().await;
 
     Ok(())
 }

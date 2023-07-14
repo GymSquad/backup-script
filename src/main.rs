@@ -17,9 +17,9 @@ struct Opts {
 fn main() -> Result<()> {
     color_eyre::install()?;
 
-    let Opts { config } = Opts::parse();
+    let opts = Opts::parse();
 
-    let config = Config::try_read(config)?;
+    let config = Config::try_read(opts.config)?;
 
     let mut builder = tokio::runtime::Builder::new_multi_thread();
 
