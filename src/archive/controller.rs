@@ -1,6 +1,9 @@
-use std::sync::Arc;
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
-use tokio::{process::Command, task::JoinHandle};
+use tokio::{fs, process::Command, task::JoinHandle};
 
 use crate::db::{Database, Website};
 
@@ -11,6 +14,7 @@ pub struct ArchiveController {
     checker: WebsiteChecker,
     program: Arc<str>,
     args: Arc<[&'static str]>,
+    output_path: Arc<Path>,
     handles: Vec<JoinHandle<()>>,
 }
 
@@ -20,12 +24,14 @@ impl ArchiveController {
         checker: WebsiteChecker,
         program: Arc<str>,
         args: Arc<[&'static str]>,
+        output_path: Arc<Path>,
     ) -> Self {
         Self {
             db,
             checker,
             program,
             args,
+            output_path,
             handles: Vec::new(),
         }
     }
@@ -36,25 +42,40 @@ impl ArchiveController {
         let checker = self.checker.clone();
         let program = self.program.clone();
         let args = self.args.clone();
+        let output_path = self.output_path.clone();
+        let today = chrono::Local::now().format("%Y-%m-%d");
 
         let handle = tokio::spawn(async move {
+            tracing::info!("Checking validity...");
             let (url, is_valid) = match checker.request_check(website.url.clone()).await {
-                Ok(WebsiteStatus::Valid) => (website.url, true),
+                Ok(WebsiteStatus::Valid(url)) => (url, true),
                 Ok(WebsiteStatus::Redirected(url)) => (url, true),
-                Ok(WebsiteStatus::Dead) => (website.url, false),
-                Err(_) => return,
+                Ok(WebsiteStatus::Dead(url)) => (url, false),
+                _ => {
+                    tracing::info!("Failed to check website, skipping...");
+                    return;
+                }
             };
 
-            if website.is_valid != is_valid {
+            if website.is_stale(is_valid) {
                 db.update_website_status(&website.id, is_valid)
                     .await
                     .unwrap();
             }
 
             if !is_valid {
+                tracing::info!("Skipping invalid website...");
                 return;
             }
 
+            let Some(archived_path) = get_archive_path(&url) else {
+                tracing::info!("Failed to get archive path, skipping...");
+                return;
+            };
+            let mut output_path = output_path.join(&website.id);
+            output_path.push(today.to_string());
+
+            tracing::info!("Starting archive...");
             let mut child = Command::new(&*program)
                 .args(args.into_iter().map(|s| {
                     if s.eq_ignore_ascii_case("{url}") {
@@ -67,14 +88,23 @@ impl ArchiveController {
                 .unwrap();
 
             match child.wait().await {
-                Ok(s) if s.success() => {
-                    todo!("move to correct location");
+                Ok(s) => {
+                    if !s.success() {
+                        tracing::warn!("Archive exited with non-zero exit code");
+                    }
+                    tracing::info!("Archive complete!");
+                    if let Err(e) = fs::create_dir_all(&output_path).await {
+                        tracing::error!("Failed to create output directory: {}", e);
+                        return;
+                    }
+                    if let Err(e) = fs::rename(archived_path, &output_path).await {
+                        tracing::error!("Failed to move archive: {}", e);
+                        return;
+                    }
+                    tracing::info!("Archive moved to {}", output_path.display());
                 }
-                Ok(_) => {
-                    todo!("warn about non-successful exit codes");
-                }
-                Err(_) => {
-                    todo!("warn about errors");
+                Err(e) => {
+                    tracing::error!("Archive failed with error: {}", e);
                 }
             }
         });
@@ -87,4 +117,14 @@ impl ArchiveController {
             handle.await.unwrap();
         }
     }
+}
+
+fn get_archive_path(url: &reqwest::Url) -> Option<PathBuf> {
+    let mut path = PathBuf::from(url.host_str()?);
+    if let Some(path_segments) = url.path_segments() {
+        for segment in path_segments {
+            path.push(segment);
+        }
+    }
+    Some(path)
 }

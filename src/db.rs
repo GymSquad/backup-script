@@ -20,6 +20,12 @@ pub struct Website {
     pub is_valid: bool,
 }
 
+impl Website {
+    pub fn is_stale(&self, is_valid: bool) -> bool {
+        self.is_valid != is_valid
+    }
+}
+
 impl Database {
     pub async fn get_websites(&self) -> Result<Vec<Website>> {
         sqlx::query_as::<_, Website>(
