@@ -31,8 +31,10 @@ pub async fn main(config: Config) -> Result<()> {
         .and_then(|r| r.num_runs.map(|n| n as usize))
         .unwrap_or(websites.len());
 
+    tracing::info!("Archiving {} websites", num_urls);
+
     for website in websites.into_iter().take(num_urls) {
-        controller.add_website(website);
+        controller.archive(website);
     }
 
     controller.wait().await;

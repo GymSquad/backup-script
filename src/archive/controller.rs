@@ -30,7 +30,8 @@ impl ArchiveController {
         }
     }
 
-    pub fn add_website(&mut self, website: Website) {
+    #[tracing::instrument(skip(self))]
+    pub fn archive(&mut self, website: Website) {
         let db = self.db.clone();
         let checker = self.checker.clone();
         let program = self.program.clone();

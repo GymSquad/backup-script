@@ -5,6 +5,8 @@ mod db;
 use clap::Parser;
 use color_eyre::Result;
 use config::Config;
+use time::{macros::format_description, UtcOffset};
+use tracing_subscriber::fmt::time::OffsetTime;
 
 #[derive(Debug, Parser)]
 #[command(author, version, about)]
@@ -15,10 +17,20 @@ struct Opts {
 }
 
 fn main() -> Result<()> {
+    let timer = OffsetTime::new(
+        UtcOffset::from_hms(8, 0, 0).unwrap(),
+        format_description!("[year]-[month]-[day] [hour]:[minute]:[second]"),
+    );
+    tracing_subscriber::fmt()
+        .with_target(false)
+        .with_timer(timer)
+        .with_level(true)
+        .init();
     color_eyre::install()?;
 
     let opts = Opts::parse();
 
+    tracing::info!("Reading config from {}", opts.config);
     let config = Config::try_read(opts.config)?;
 
     let mut builder = tokio::runtime::Builder::new_multi_thread();
@@ -33,12 +45,12 @@ fn main() -> Result<()> {
         tokio::select! {
             result = archive::main(config) => {
                 match result {
-                    Ok(_) => println!("Archive completed successfully!"),
-                    Err(e) => println!("Archive failed with error: {}", e),
+                    Ok(_) => tracing::info!("Archive completed successfully!"),
+                    Err(e) => tracing::error!("Archive failed with error: {}", e),
                 }
             }
             _ = tokio::signal::ctrl_c() => {
-                println!("Ctrl-C received, shutting down...");
+                tracing::info!("Ctrl-C received, shutting down...");
             }
         }
     });
