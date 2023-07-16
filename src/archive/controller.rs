@@ -51,8 +51,12 @@ impl ArchiveController {
                 Ok(WebsiteStatus::Valid(url)) => (url, true),
                 Ok(WebsiteStatus::Redirected(url)) => (url, true),
                 Ok(WebsiteStatus::Dead(url)) => (url, false),
-                Ok(WebsiteStatus::Failed) => {
-                    tracing::warn!("Failed to send request to {}, skipping...", &website.url);
+                Ok(WebsiteStatus::Failed(e)) => {
+                    tracing::warn!(
+                        "Failed to send request to {}. (Cause: {}) Skipping...",
+                        &website.url,
+                        e
+                    );
                     return;
                 }
                 Err(e) => {

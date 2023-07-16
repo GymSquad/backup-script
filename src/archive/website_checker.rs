@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use color_eyre::{eyre::Context, Result};
+use color_eyre::{eyre::Context, Report, Result};
 use reqwest::Client;
 use tokio::sync::{mpsc, oneshot};
 
@@ -15,7 +15,7 @@ pub enum WebsiteStatus {
     Valid(reqwest::Url),
     Redirected(reqwest::Url),
     Dead(reqwest::Url),
-    Failed,
+    Failed(Report),
 }
 
 #[derive(Debug, Clone)]
@@ -36,7 +36,9 @@ impl WebsiteChecker {
 
             while let Some(req) = rx.recv().await {
                 let response = Self::check_website(&client, &req.url).await;
-                let _ = req.tx.send(response.unwrap_or(WebsiteStatus::Failed));
+                let _ = req
+                    .tx
+                    .send(response.unwrap_or_else(|e| WebsiteStatus::Failed(e)));
             }
         });
 
