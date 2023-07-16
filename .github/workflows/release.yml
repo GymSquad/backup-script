@@ -1,0 +1,62 @@
+name: Release Binary
+
+permissions:
+  contents: write
+
+on:
+  workflow_run:
+    workflows:
+      - Tag
+    types:
+      - completed
+
+job:
+  get-tag:
+    name: Get tag from package version
+    runs-on: ubuntu-latest
+    outputs:
+      pkg-version: ${{ steps.pkg-version.outputs.PKG_VERSION }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Get package version
+        id: pkg-version
+        shell: bash
+        run: |
+          echo PKG_VERSION=$(awk -F ' = ' '$1 ~ /version/ { gsub(/["]/, "", $2); print $2 }' Cargo.toml) >> $GITHUB_OUTPUT
+
+  create-release:
+    name: Create release
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs: get-tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Create release
+        uses: taiki-e/create-gh-release-action@v1
+        with:
+          branch: main
+          ref: refs/tags/v${{ needs.get-tag.outputs.pkg-version }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  upload-binary:
+    name: Upload binary to GitHub release
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    needs:
+      - get-tag
+      - create-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Upload binary
+        uses: taiki-e/upload-rust-binary-action@v1
+        with:
+          bin: archive-tool
+          target: x86_64-unknown-linux-gnu
+          archive: $bin-$target
+          ref: refs/tags/v${{ needs.get-tag.outputs.pkg-version }}
+          token: ${{ secrets.GITHUB_TOKEN }}

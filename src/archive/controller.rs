@@ -77,7 +77,7 @@ impl ArchiveController {
 
             tracing::info!("Starting archive...");
             let mut child = Command::new(&*program)
-                .args(args.into_iter().map(|s| {
+                .args(args.iter().map(|s| {
                     if s.eq_ignore_ascii_case("{url}") {
                         url.as_str()
                     } else {
