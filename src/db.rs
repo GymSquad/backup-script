@@ -43,7 +43,7 @@ impl Database {
         sqlx::query(
             r#"
             UPDATE "Website"
-            SET "isValid" = $1
+            SET "isUrlValid" = $1
             WHERE "id" = $2
             "#,
         )

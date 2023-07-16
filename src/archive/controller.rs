@@ -46,13 +46,17 @@ impl ArchiveController {
         let today = chrono::Local::now().format("%Y-%m-%d");
 
         let handle = tokio::spawn(async move {
-            tracing::info!("Checking validity...");
+            tracing::info!("Checking validity of {}...", &website.url);
             let (url, is_valid) = match checker.request_check(website.url.clone()).await {
                 Ok(WebsiteStatus::Valid(url)) => (url, true),
                 Ok(WebsiteStatus::Redirected(url)) => (url, true),
                 Ok(WebsiteStatus::Dead(url)) => (url, false),
-                _ => {
-                    tracing::info!("Failed to check website, skipping...");
+                Ok(WebsiteStatus::Failed) => {
+                    tracing::warn!("Failed to send request to {}, skipping...", &website.url);
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!("Something went wrong: {}", e);
                     return;
                 }
             };
@@ -64,18 +68,18 @@ impl ArchiveController {
             }
 
             if !is_valid {
-                tracing::info!("Skipping invalid website...");
+                tracing::info!("Invalid website: {}, skipping...", &url);
                 return;
             }
 
             let Some(archived_path) = get_archive_path(&url) else {
-                tracing::info!("Failed to get archive path, skipping...");
+                tracing::warn!("Cannot get archive path, skipping...");
                 return;
             };
             let mut output_path = output_path.join(&website.id);
             output_path.push(today.to_string());
 
-            tracing::info!("Starting archive...");
+            tracing::info!("Start to archive {}...", &url);
             let mut child = Command::new(&*program)
                 .args(args.iter().map(|s| {
                     if s.eq_ignore_ascii_case("{url}") {
@@ -89,10 +93,10 @@ impl ArchiveController {
 
             match child.wait().await {
                 Ok(s) => {
+                    tracing::info!("Archive complete!");
                     if !s.success() {
                         tracing::warn!("Archive exited with non-zero exit code");
                     }
-                    tracing::info!("Archive complete!");
                     if let Err(e) = fs::create_dir_all(&output_path).await {
                         tracing::error!("Failed to create output directory: {}", e);
                         return;
