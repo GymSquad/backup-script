@@ -10,7 +10,7 @@ on:
     types:
       - completed
 
-job:
+jobs:
   get-tag:
     name: Get tag from package version
     runs-on: ubuntu-latest
