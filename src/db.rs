@@ -30,7 +30,7 @@ impl Database {
     pub async fn get_websites(&self) -> Result<Vec<Website>> {
         sqlx::query_as::<_, Website>(
             r#"
-            SELECT "id", "url", "isValid" as is_valid
+            SELECT "id", "url", "isUrlValid" as is_valid
             FROM "Website"
             "#,
         )
