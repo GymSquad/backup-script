@@ -35,10 +35,9 @@ impl WebsiteChecker {
                 .unwrap();
 
             while let Some(req) = rx.recv().await {
+                tracing::info!("Checking validity of {}...", req.url);
                 let response = Self::check_website(&client, &req.url).await;
-                let _ = req
-                    .tx
-                    .send(response.unwrap_or_else(|e| WebsiteStatus::Failed(e)));
+                let _ = req.tx.send(response);
             }
         });
 
@@ -54,17 +53,21 @@ impl WebsiteChecker {
         rx.await.wrap_err("Failed to receive check status")
     }
 
-    async fn check_website(client: &Client, url: &str) -> Result<WebsiteStatus> {
-        let response = client
+    async fn check_website(client: &Client, url: &str) -> WebsiteStatus {
+        let response = match client
             .get(url)
             .send()
             .await
-            .wrap_err("Failed to send request")?;
+            .wrap_err("Failed to send request")
+        {
+            Ok(response) => response,
+            Err(e) => return WebsiteStatus::Failed(e),
+        };
 
         match response.status() {
-            s if s.is_success() => Ok(WebsiteStatus::Valid(response.url().clone())),
-            s if s.is_redirection() => Ok(WebsiteStatus::Redirected(response.url().clone())),
-            _ => Ok(WebsiteStatus::Dead(response.url().clone())),
+            s if s.is_success() => WebsiteStatus::Valid(response.url().clone()),
+            s if s.is_redirection() => WebsiteStatus::Redirected(response.url().clone()),
+            _ => WebsiteStatus::Dead(response.url().clone()),
         }
     }
 }

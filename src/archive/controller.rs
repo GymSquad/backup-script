@@ -46,7 +46,6 @@ impl ArchiveController {
         let today = chrono::Local::now().format("%Y-%m-%d");
 
         let handle = tokio::spawn(async move {
-            tracing::info!("Checking validity of {}...", &website.url);
             let (url, is_valid) = match checker.request_check(website.url.clone()).await {
                 Ok(WebsiteStatus::Valid(url)) => (url, true),
                 Ok(WebsiteStatus::Redirected(url)) => (url, true),
