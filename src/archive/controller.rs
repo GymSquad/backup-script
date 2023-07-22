@@ -1,6 +1,6 @@
 use std::{
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 use tokio::{fs, process::Command, task::JoinHandle};
@@ -8,6 +8,8 @@ use tokio::{fs, process::Command, task::JoinHandle};
 use crate::db::{Database, Website};
 
 use super::website_checker::{WebsiteChecker, WebsiteStatus};
+
+static TODAY_STR: OnceLock<String> = OnceLock::new();
 
 pub struct ArchiveController {
     db: Database,
@@ -26,6 +28,7 @@ impl ArchiveController {
         args: Arc<[&'static str]>,
         output_path: Arc<Path>,
     ) -> Self {
+        TODAY_STR.get_or_init(|| chrono::Local::now().format("%Y-%m-%d").to_string());
         Self {
             db,
             checker,
@@ -36,90 +39,99 @@ impl ArchiveController {
         }
     }
 
-    #[tracing::instrument(skip(self))]
     pub fn archive(&mut self, website: Website) {
-        let db = self.db.clone();
-        let checker = self.checker.clone();
-        let program = self.program.clone();
-        let args = self.args.clone();
-        let output_path = self.output_path.clone();
-        let today = chrono::Local::now().format("%Y-%m-%d");
+        let config = ArchiveWebsiteConfig {
+            db: self.db.clone(),
+            checker: self.checker.clone(),
+            program: self.program.clone(),
+            args: self.args.clone(),
+            output_path: self.output_path.clone(),
+        };
 
-        let handle = tokio::spawn(async move {
-            let (url, is_valid) = match checker.request_check(website.url.clone()).await {
-                Ok(WebsiteStatus::Valid(url)) => (url, true),
-                Ok(WebsiteStatus::Redirected(url)) => (url, true),
-                Ok(WebsiteStatus::Dead(url)) => (url, false),
-                Ok(WebsiteStatus::Failed(e)) => {
-                    tracing::warn!(
-                        "Failed to send request to {}. (Cause: {}) Skipping...",
-                        &website.url,
-                        e
-                    );
-                    return;
-                }
-                Err(e) => {
-                    tracing::warn!("Something went wrong: {}", e);
-                    return;
-                }
-            };
+        let handle = tokio::spawn(Self::archive_website(website, config));
 
-            if website.is_stale(is_valid) {
-                db.update_website_status(&website.id, is_valid)
-                    .await
-                    .unwrap();
-            }
+        self.handles.push(handle);
+    }
 
-            if !is_valid {
-                tracing::info!("Invalid website: {}, skipping...", &url);
+    #[tracing::instrument(name="archive", skip(website, config), fields(url=%website.url))]
+    async fn archive_website(website: Website, config: ArchiveWebsiteConfig) {
+        let ArchiveWebsiteConfig {
+            db,
+            checker,
+            program,
+            args,
+            output_path,
+        } = config;
+        let today = TODAY_STR.get().unwrap();
+
+        let (url, is_valid) = match checker.request_check(website.url.clone()).await {
+            Ok(WebsiteStatus::Valid(url)) => (url, true),
+            Ok(WebsiteStatus::Redirected(url)) => (url, true),
+            Ok(WebsiteStatus::Dead(url)) => (url, false),
+            Ok(WebsiteStatus::Failed(e)) => {
+                tracing::warn!("Failed to send request: {}", e);
+                tracing::warn!("Skipping...");
                 return;
             }
+            Err(e) => {
+                tracing::warn!("Something went wrong: {}", e);
+                return;
+            }
+        };
 
-            let Some(archived_path) = url.host_str() else {
+        if website.is_stale(is_valid) {
+            db.update_website_status(&website.id, is_valid)
+                .await
+                .unwrap();
+        }
+
+        if !is_valid {
+            tracing::info!("Skipping invalid website...");
+            return;
+        }
+
+        let Some(archived_path) = url.host_str() else {
                 tracing::warn!("Cannot get archive path, skipping...");
                 return;
             };
-            let archived_path = PathBuf::from(archived_path);
-            let mut output_path = output_path.join(&website.id);
-            output_path.push(today.to_string());
+        let archived_path = PathBuf::from(archived_path);
+        let mut output_path = output_path.join(&website.id);
+        output_path.push(today.to_string());
 
-            tracing::info!("Start to archive {}...", &url);
-            let mut child = Command::new(&*program)
-                .args(args.iter().map(|s| {
-                    if s.eq_ignore_ascii_case("{url}") {
-                        url.as_str()
-                    } else {
-                        *s
-                    }
-                }))
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .spawn()
-                .unwrap();
+        tracing::info!("Start archiving...");
+        let mut child = Command::new(&*program)
+            .args(args.iter().map(|s| {
+                if s.eq_ignore_ascii_case("{url}") {
+                    url.as_str()
+                } else {
+                    *s
+                }
+            }))
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
 
-            match child.wait().await {
-                Ok(s) => {
-                    tracing::info!("Archive complete!");
-                    if !s.success() {
-                        tracing::warn!("Archive exited with non-zero exit code");
-                    }
-                    if let Err(e) = fs::create_dir_all(&output_path).await {
-                        tracing::error!("Failed to create output directory: {}", e);
-                        return;
-                    }
-                    if let Err(e) = fs::rename(archived_path, &output_path).await {
-                        tracing::error!("Failed to move archive of {}: {}", &url, e);
-                        return;
-                    }
-                    tracing::info!("Archive moved to {}", output_path.display());
+        match child.wait().await {
+            Ok(s) => {
+                tracing::info!("Archive complete!");
+                if !s.success() {
+                    tracing::warn!("Archive exited with non-zero exit code");
                 }
-                Err(e) => {
-                    tracing::error!("Archive failed with error: {}", e);
+                if let Err(e) = fs::create_dir_all(&output_path).await {
+                    tracing::error!("Failed to create output directory: {}", e);
+                    return;
                 }
+                if let Err(e) = fs::rename(archived_path, &output_path).await {
+                    tracing::error!("Failed to move archive: {}", e);
+                    return;
+                }
+                tracing::info!("Archive moved to {}", output_path.display());
             }
-        });
-
-        self.handles.push(handle);
+            Err(e) => {
+                tracing::error!("Archive failed with error: {}", e);
+            }
+        }
     }
 
     pub async fn wait(self) {
@@ -127,4 +139,12 @@ impl ArchiveController {
             handle.await.unwrap();
         }
     }
+}
+
+struct ArchiveWebsiteConfig {
+    db: Database,
+    checker: WebsiteChecker,
+    program: Arc<str>,
+    args: Arc<[&'static str]>,
+    output_path: Arc<Path>,
 }
