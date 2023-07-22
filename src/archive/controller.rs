@@ -75,10 +75,11 @@ impl ArchiveController {
                 return;
             }
 
-            let Some(archived_path) = get_archive_path(&url) else {
+            let Some(archived_path) = url.host_str() else {
                 tracing::warn!("Cannot get archive path, skipping...");
                 return;
             };
+            let archived_path = PathBuf::from(archived_path);
             let mut output_path = output_path.join(&website.id);
             output_path.push(today.to_string());
 
@@ -125,14 +126,4 @@ impl ArchiveController {
             handle.await.unwrap();
         }
     }
-}
-
-fn get_archive_path(url: &reqwest::Url) -> Option<PathBuf> {
-    let mut path = PathBuf::from(url.host_str()?);
-    if let Some(path_segments) = url.path_segments() {
-        for segment in path_segments {
-            path.push(segment);
-        }
-    }
-    Some(path)
 }
