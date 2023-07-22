@@ -10,6 +10,9 @@ on:
     types:
       - completed
 
+env:
+  SQLX_OFFLINE: true
+
 jobs:
   get-tag:
     name: Get tag from package version

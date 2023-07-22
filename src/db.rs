@@ -1,4 +1,5 @@
-use color_eyre::{eyre::Context, Result};
+use color_eyre::eyre::WrapErr;
+use color_eyre::Result;
 use sqlx::{Pool, Postgres};
 
 #[derive(Debug, Clone)]
@@ -28,7 +29,8 @@ impl Website {
 
 impl Database {
     pub async fn get_websites(&self) -> Result<Vec<Website>> {
-        sqlx::query_as::<_, Website>(
+        sqlx::query_as!(
+            Website,
             r#"
             SELECT "id", "url", "isUrlValid" as is_valid
             FROM "Website"
@@ -40,15 +42,15 @@ impl Database {
     }
 
     pub async fn update_website_status(&self, id: &str, is_valid: bool) -> Result<()> {
-        sqlx::query(
+        sqlx::query!(
             r#"
             UPDATE "Website"
             SET "isUrlValid" = $1
             WHERE "id" = $2
             "#,
+            is_valid,
+            id,
         )
-        .bind(is_valid)
-        .bind(id)
         .execute(&self.pool)
         .await
         .wrap_err("Failed to update website in database")?;

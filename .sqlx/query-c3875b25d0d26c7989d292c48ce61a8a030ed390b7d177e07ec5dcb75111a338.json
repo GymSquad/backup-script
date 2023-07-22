@@ -1,0 +1,15 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "\n            UPDATE \"Website\"\n            SET \"isUrlValid\" = $1\n            WHERE \"id\" = $2\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Bool",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "c3875b25d0d26c7989d292c48ce61a8a030ed390b7d177e07ec5dcb75111a338"
+}
