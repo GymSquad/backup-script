@@ -91,6 +91,7 @@ impl ArchiveController {
                         *s
                     }
                 }))
+                .stdout(std::process::Stdio::null())
                 .spawn()
                 .unwrap();
 
