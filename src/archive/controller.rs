@@ -93,6 +93,7 @@ impl ArchiveController {
                     }
                 }))
                 .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
                 .spawn()
                 .unwrap();
 
@@ -107,7 +108,7 @@ impl ArchiveController {
                         return;
                     }
                     if let Err(e) = fs::rename(archived_path, &output_path).await {
-                        tracing::error!("Failed to move archive: {}", e);
+                        tracing::error!("Failed to move archive of {}: {}", &url, e);
                         return;
                     }
                     tracing::info!("Archive moved to {}", output_path.display());
