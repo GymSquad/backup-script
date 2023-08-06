@@ -16,25 +16,22 @@ pub struct DatabaseConfig {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct ArchiveConfig {
-    #[serde(alias = "output-dir")]
     pub output_dir: PathBuf,
     pub command: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub struct RunnerConfig {
-    #[serde(alias = "num-threads")]
-    pub num_threads: Option<u32>,
-    #[serde(alias = "num-runs")]
-    pub num_runs: Option<u32>,
+    pub num_threads: Option<usize>,
+    pub num_runs: Option<usize>,
+    pub num_workers: Option<usize>,
 }
 
 impl Config {
-    pub fn try_read<P>(path: P) -> Result<Self>
-    where
-        P: AsRef<Path>,
-    {
+    pub fn try_read(path: impl AsRef<Path>) -> Result<Self> {
         let content = std::fs::read_to_string(path)
             .wrap_err("Failed to read config file")
             .with_suggestion(|| "Check if the specified file name is correct")?;

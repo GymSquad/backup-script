@@ -28,18 +28,25 @@ pub async fn main(config: Config) -> Result<()> {
     let websites = db.get_websites().await?;
     let checker = WebsiteChecker::new();
 
-    let mut controller = ArchiveController::new(db, checker, program, command_args, output_path);
+    let num_workers = config
+        .runner
+        .as_ref()
+        .and_then(|r| r.num_workers)
+        .unwrap_or_else(|| num_cpus::get_physical());
+
+    let mut controller =
+        ArchiveController::new(db, checker, program, command_args, output_path, num_workers);
 
     let num_urls = config
         .runner
         .as_ref()
-        .and_then(|r| r.num_runs.map(|n| n as usize))
+        .and_then(|r| r.num_runs)
         .unwrap_or(websites.len());
 
     tracing::info!("Archiving {} websites", num_urls);
 
     for website in websites.into_iter().take(num_urls) {
-        controller.archive(website);
+        controller.archive(website).await;
     }
 
     controller.wait().await;

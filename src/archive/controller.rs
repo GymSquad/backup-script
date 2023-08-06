@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, OnceLock},
 };
 
-use tokio::{fs, process::Command, task::JoinHandle};
+use tokio::{fs, process::Command, sync::Semaphore, task::JoinHandle};
 
 use crate::db::{Database, Website};
 
@@ -12,11 +12,19 @@ use super::website_checker::{WebsiteChecker, WebsiteStatus};
 static TODAY_STR: OnceLock<String> = OnceLock::new();
 
 pub struct ArchiveController {
+    /// Database connection
     db: Database,
+    /// Website checker to check if a website is still valid
     checker: WebsiteChecker,
+    /// Program name to use for archiving
     program: Arc<str>,
+    /// Arguments to pass to the program
     args: Arc<[&'static str]>,
+    /// Output path to store the archived website
     output_path: Arc<Path>,
+    /// Semaphore to limit the number of concurrent workers
+    semaphore: Arc<Semaphore>,
+    /// Join handles for all the workers
     handles: Vec<JoinHandle<()>>,
 }
 
@@ -27,19 +35,23 @@ impl ArchiveController {
         program: Arc<str>,
         args: Arc<[&'static str]>,
         output_path: Arc<Path>,
+        num_workers: usize,
     ) -> Self {
         TODAY_STR.get_or_init(|| chrono::Local::now().format("%Y-%m-%d").to_string());
+        let semaphore = Arc::new(Semaphore::new(num_workers));
+
         Self {
             db,
             checker,
             program,
             args,
             output_path,
+            semaphore,
             handles: Vec::new(),
         }
     }
 
-    pub fn archive(&mut self, website: Website) {
+    pub async fn archive(&mut self, website: Website) {
         let config = ArchiveWebsiteConfig {
             db: self.db.clone(),
             checker: self.checker.clone(),
@@ -48,7 +60,11 @@ impl ArchiveController {
             output_path: self.output_path.clone(),
         };
 
-        let handle = tokio::spawn(Self::archive_website(website, config));
+        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
+        let handle = tokio::spawn(async move {
+            Self::archive_website(website, config).await;
+            drop(permit);
+        });
 
         self.handles.push(handle);
     }
@@ -65,8 +81,7 @@ impl ArchiveController {
         let today = TODAY_STR.get().unwrap();
 
         let (url, is_valid) = match checker.request_check(website.url.clone()).await {
-            Ok(WebsiteStatus::Valid(url)) => (url, true),
-            Ok(WebsiteStatus::Redirected(url)) => (url, true),
+            Ok(WebsiteStatus::Valid(url)) | Ok(WebsiteStatus::Redirected(url)) => (url, true),
             Ok(WebsiteStatus::Dead(url)) => (url, false),
             Ok(WebsiteStatus::Failed(e)) => {
                 tracing::warn!("Failed to send request: {}", e);
