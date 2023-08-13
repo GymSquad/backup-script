@@ -59,18 +59,18 @@ impl ArchiveController {
             args: self.args.clone(),
             output_path: self.output_path.clone(),
         };
-
-        let permit = self.semaphore.clone().acquire_owned().await.unwrap();
-        let handle = tokio::spawn(async move {
-            Self::archive_website(website, config).await;
-            drop(permit);
-        });
+        let semaphore = self.semaphore.clone();
+        let handle = tokio::spawn(Self::archive_website(website, config, semaphore));
 
         self.handles.push(handle);
     }
 
-    #[tracing::instrument(name="archive", skip(website, config), fields(url=%website.url))]
-    async fn archive_website(website: Website, config: ArchiveWebsiteConfig) {
+    #[tracing::instrument(name="archive", skip(website, config, semaphore), fields(url=%website.url))]
+    async fn archive_website(
+        website: Website,
+        config: ArchiveWebsiteConfig,
+        semaphore: Arc<Semaphore>,
+    ) {
         let ArchiveWebsiteConfig {
             db,
             checker,
@@ -106,12 +106,14 @@ impl ArchiveController {
         }
 
         let Some(archived_path) = url.host_str() else {
-                tracing::warn!("Cannot get archive path, skipping...");
-                return;
-            };
+            tracing::warn!("Cannot get archive path, skipping...");
+            return;
+        };
         let archived_path = PathBuf::from(archived_path);
         let mut output_path = output_path.join(&website.id);
         output_path.push(today.to_string());
+
+        let _permit = semaphore.acquire_owned().await.unwrap();
 
         tracing::info!("Start archiving...");
         let mut child = Command::new(&*program)
